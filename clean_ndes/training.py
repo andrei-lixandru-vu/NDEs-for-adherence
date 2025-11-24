@@ -10,8 +10,8 @@ from .model import AdherencePredictor
 from .losses import get_batch_loss, get_batch_loss_validation
 
 
-def train_one_epoch(model, training_loader, validation_loader, learning_rate=0.001, 
-                   verbose=True):
+def train_one_epoch(model, training_loader, validation_loader, optimizer=None,
+                   learning_rate=0.001, verbose=True):
     """
     Train model for one epoch and compute validation loss.
     
@@ -36,7 +36,11 @@ def train_one_epoch(model, training_loader, validation_loader, learning_rate=0.0
     train_losses = []
     val_losses = []
     
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    if optimizer is None:
+        if hasattr(model, "optimizer") and model.optimizer is not None:
+            optimizer = model.optimizer
+        else:
+            optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     
     # Select a random validation batch for monitoring
     random_vbatch_idx = torch.randint(0, len(validation_loader), (1,))
@@ -63,8 +67,10 @@ def train_one_epoch(model, training_loader, validation_loader, learning_rate=0.0
             outputs = torch.zeros(batch_size, T, model.out_dim)
             for sample_idx in range(batch_size):
                 # y0: [target at T=0, controls at T=0]
+                # Convert label to float to match control dtype
+                target_t0 = vlabels[sample_idx, 0].float().unsqueeze(0)
                 y0 = torch.cat([
-                    vlabels[sample_idx, 0].unsqueeze(0), 
+                    target_t0, 
                     vinputs[sample_idx][0]
                 ])
                 aux_trajectory = model.solve_for_inference(
@@ -93,8 +99,10 @@ def train_one_epoch(model, training_loader, validation_loader, learning_rate=0.0
         outputs = torch.zeros(batch_size, T_train, model.out_dim)
         for sample_idx in range(batch_size):
             # y0: [target at T=0, controls at T=0]
+            # Convert label to float to match control dtype
+            target_t0 = labels[sample_idx, 0].float().unsqueeze(0)
             y0 = torch.cat([
-                labels[sample_idx, 0].unsqueeze(0), 
+                target_t0, 
                 inputs[sample_idx][0]
             ])
             outputs[sample_idx] = model.solve_for_training(

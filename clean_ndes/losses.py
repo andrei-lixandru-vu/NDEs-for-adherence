@@ -31,15 +31,15 @@ def get_batch_loss(outputs, labels):
 
 def get_batch_loss_validation(outputs, labels):
     """
-    Validation loss: MSE Loss on probabilities.
+    Validation loss: MSE Loss on raw class indices.
     
-    Computes MSE between predicted probabilities and one-hot labels.
+    Computes MSE between predicted class indices and true class indices.
     Removes first timestep from evaluation as it's given by the initial condition.
     
     Parameters
     ----------
     outputs : torch.Tensor
-        Shape (batch_size, T, n_classes) - logits from model
+        Shape (batch_size, T, n_classes) - one-hot encoded outputs from model
     labels : torch.Tensor
         Shape (batch_size, T) - true class indices
         
@@ -56,11 +56,11 @@ def get_batch_loss_validation(outputs, labels):
     outputs_flat = outputs.reshape(-1, n_classes)
     labels_flat = labels.reshape(-1)
     
-    # Convert labels to one-hot encoding for MSE
-    labels_onehot = torch.nn.functional.one_hot(
-        labels_flat.long(), 
-        num_classes=n_classes
-    ).float()
+    # Get predicted class indices from one-hot outputs
+    pred_class_indices = torch.argmax(outputs_flat, dim=1).float()
     
-    loss = torch.nn.MSELoss()(outputs_flat, labels_onehot)
+    # Convert labels to float for MSE computation
+    labels_flat_float = labels_flat.float()
+    
+    loss = torch.nn.MSELoss()(pred_class_indices, labels_flat_float)
     return loss

@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
 
 
 class AdherencePredictor(nn.Module):
@@ -13,7 +14,8 @@ class AdherencePredictor(nn.Module):
     Neural network for predicting adherence given state and control inputs.
     """
     
-    def __init__(self, in_dim, out_dim, hidden_dim=64):
+    def __init__(self, in_dim, out_dim, hidden_dim=64,
+                 optimizer_cls=None, optimizer_kwargs=None):
         """
         Initialize the model.
         
@@ -25,11 +27,19 @@ class AdherencePredictor(nn.Module):
             Output dimension (number of adherence classes)
         hidden_dim : int
             Hidden layer dimension
+        optimizer_cls : torch.optim.Optimizer, optional
+            Optimizer class to use for training (default: Adam)
+        optimizer_kwargs : dict, optional
+            Keyword arguments passed to optimizer (default: {"lr": 1e-3})
         """
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.hidden_dim = hidden_dim
+        self.optimizer_cls = optimizer_cls or optim.Adam
+        self.optimizer_kwargs = {"lr": 1e-3}
+        if optimizer_kwargs:
+            self.optimizer_kwargs.update(optimizer_kwargs)
 
         # Build network layers
         layers = []
@@ -48,6 +58,11 @@ class AdherencePredictor(nn.Module):
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
                 nn.init.zeros_(m.bias)
+
+        self.optimizer = self.optimizer_cls(
+            self.parameters(),
+            **self.optimizer_kwargs
+        )
 
     def forward(self, y):
         """
@@ -102,12 +117,14 @@ class AdherencePredictor(nn.Module):
             Shape (T+1, D) trajectory
         """
         ys = []
-        last_y = y0
+        last_y = y0.float()  # Ensure y0 is float for consistency
         
         for t, c in zip(ts, cs[1:]):  # Skip first control as it's in y0
             ys.append(last_y)
             target_next_day = self.inference(y=last_y)
-            last_y = torch.cat([target_next_day, c])
+            # Convert class index to float to match control dtype
+            target_next_day_float = target_next_day.float()
+            last_y = torch.cat([target_next_day_float, c])
         ys.append(last_y)
         
         return torch.stack(ys)
@@ -123,7 +140,7 @@ class AdherencePredictor(nn.Module):
         cs : torch.Tensor
             Shape (T, D-1) control signals
         y0 : torch.Tensor
-            Shape (D,) initial condition
+            Shape (D,) initial condition (first element is target class index)
         
         Returns
         -------
@@ -132,14 +149,18 @@ class AdherencePredictor(nn.Module):
         """
         ys_target_logits = torch.zeros(len(ts), self.out_dim)
         
-        # Logits for t=0 are one-hot encoded target from initial condition
-        ys_target_logits[0] = F.one_hot(y0[0].long(), num_classes=self.out_dim).float()
+        # Ensure y0 is float for consistency
+        last_y = y0.float()
         
-        last_y = y0
+        # Logits for t=0 are one-hot encoded target from initial condition
+        # y0[0] should be the class index (as float, convert to long for one-hot)
+        ys_target_logits[0] = F.one_hot(last_y[0].long(), num_classes=self.out_dim).float()
         
         for idx, (t, c) in enumerate(zip(ts, cs[1:]), start=1):  # Skip first control
             target_next_day = self.inference(y=last_y)
             ys_target_logits[idx] = self.forward(y=last_y)
-            last_y = torch.cat([target_next_day, c])
+            # Convert class index to float to match control dtype
+            target_next_day_float = target_next_day.float()
+            last_y = torch.cat([target_next_day_float, c])
         
         return ys_target_logits
