@@ -5,7 +5,8 @@ Clean NDEs package for adherence prediction experiments.
 from .config import *
 from .data_generation import (
     generate_synthetic_reinforce_data,
-    generate_synthetic_data_super_simple
+    generate_synthetic_data_super_simple,
+    generate_synthetic_data_super_simple_Interactions2StepsApart
 )
 from .model import AdherencePredictor
 from .datasets import (
@@ -67,6 +68,7 @@ __all__ = [
     # Data generation
     'generate_synthetic_reinforce_data',
     'generate_synthetic_data_super_simple',
+    'generate_synthetic_data_super_simple_Interactions2StepsApart',
     
     # Model
     'AdherencePredictor',
